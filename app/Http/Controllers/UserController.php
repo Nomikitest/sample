@@ -6,13 +6,14 @@ use Illuminate\Http\Request;
 use App\Http\Requests;
 use App\Models\User;
 use Auth;
+use Mail;
 
 class UserController extends Controller
 {
 		public function __construct()
 		{
 			$this->middleware('auth',[
-				'except' => ['show','create','store','index']
+				'except' => ['show','create','store','index','confirmEmail']
 			]);
 		}
 		public function index()
@@ -27,7 +28,10 @@ class UserController extends Controller
 
     public function show(User $user)
     {
-			return view('users.show', compact('user'));
+			$statuses = $user->statuses()
+												->orderBy('created_at','desc')
+												->paginate(30);
+			return view('users.show', compact('user','statuses'));
     }
 
 		public function store(Request $request)
@@ -44,9 +48,9 @@ class UserController extends Controller
 				'password' => bcrypt($request->password),
 			]);
 
-			Auth::login($user);
-			session()->flash('success','welcome, you will get starting a new jorney~!');
-			return redirect()->route('users.show',[$user]);			
+			$this->sendEmailConfirmationTo($user);
+			session()->flash('success','Confirm mail had send your email');
+			return redirect('/');			
 		}
 	
 		public function edit(User $user)
@@ -82,5 +86,30 @@ class UserController extends Controller
 			$user->delete();
 			session()->flash('success','delete successful!');
 			return back();
+		}
+		protected function sendEmailConfirmationTo($user)
+		{
+			$view = 'emails.confirm';
+			$data = compact('user');
+			$from = 'aufree@yousails.com';
+			$name = 'Aufree';
+			$to = $user->email;
+			$subject = "Appciate use Sample APP! Please comfirm your email.";
+			
+			Mail::send($view,$data,function($message) use ($from,$name,$to,$subject){
+				$message->from($from,$name)->to($to)->subject($subject);
+			});
+		}
+		public function confirmEmail($token)
+		{
+			$user = User::where('activation_token',$token)->firstOrFail();
+			
+			$user->activated = true;
+			$user->activation_token = null;
+			$user->save();
+
+			Auth::login($user);
+			session()->flash('success','Congratulations! It works!');
+			return redirect()->route('users.show',[$user]);
 		}
 }
